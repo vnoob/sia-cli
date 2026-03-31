@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import type { SiaDatabase } from "../db/types.js";
 import { bufferToEmbedding, cosineSimilarity, embeddingToBuffer } from "./math.js";
 
 export function insertKnowledgeChunk(
-  db: Database.Database,
+  db: SiaDatabase,
   sourceUri: string,
   text: string,
   embedding: number[],
@@ -17,10 +17,10 @@ export function insertKnowledgeChunk(
   return id;
 }
 
-export function listAllChunks(db: Database.Database): { id: string; source_uri: string; text: string; embedding: number[] }[] {
+export function listAllChunks(db: SiaDatabase): { id: string; source_uri: string; text: string; embedding: number[] }[] {
   const rows = db
     .prepare(`SELECT id, source_uri, text, embedding FROM knowledge_chunks`)
-    .all() as { id: string; source_uri: string; text: string; embedding: Buffer }[];
+    .all() as { id: string; source_uri: string; text: string; embedding: Buffer | Uint8Array }[];
   return rows.map((r) => ({
     id: r.id,
     source_uri: r.source_uri,
@@ -30,7 +30,7 @@ export function listAllChunks(db: Database.Database): { id: string; source_uri: 
 }
 
 export function searchTopK(
-  db: Database.Database,
+  db: SiaDatabase,
   queryEmbedding: number[],
   k: number,
 ): { source_uri: string; text: string; score: number }[] {

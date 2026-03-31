@@ -1,19 +1,29 @@
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "./migrations.js";
+import type { SiaDatabase } from "./types.js";
 
-export function openDatabase(dbPath: string): Database.Database {
+export type { SiaDatabase } from "./types.js";
+
+export function openDatabase(dbPath: string): SiaDatabase {
   const dir = path.dirname(dbPath);
   fs.mkdirSync(dir, { recursive: true });
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  const db = new DatabaseSync(dbPath);
+  db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA foreign_keys = ON;");
   migrate(db);
   return db;
 }
 
-function migrate(db: Database.Database): void {
+/** Open existing DB read-only (no migrations). For listing agent contexts. */
+export function openDatabaseReadOnly(dbPath: string): SiaDatabase {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  db.exec("PRAGMA foreign_keys = ON;");
+  return db;
+}
+
+function migrate(db: SiaDatabase): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY
@@ -41,26 +51,30 @@ export type MessageRow = {
   created_at: string;
 };
 
-export function createSession(db: Database.Database, id: string, title?: string): void {
+export function createSession(db: SiaDatabase, id: string, title?: string): void {
   db.prepare("INSERT INTO sessions (id, title) VALUES (?, ?)").run(id, title ?? null);
 }
 
 export function appendMessage(
-  db: Database.Database,
+  db: SiaDatabase,
   row: Omit<MessageRow, "created_at"> & { created_at?: string },
 ): void {
   db.prepare(
     `INSERT INTO messages (id, session_id, role, content, tool_calls, tool_call_id, name, sort_order)
-     VALUES (@id, @session_id, @role, @content, @tool_calls, @tool_call_id, @name, @sort_order)`,
-  ).run({
-    ...row,
-    tool_calls: row.tool_calls ?? null,
-    tool_call_id: row.tool_call_id ?? null,
-    name: row.name ?? null,
-  });
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    row.id,
+    row.session_id,
+    row.role,
+    row.content,
+    row.tool_calls ?? null,
+    row.tool_call_id ?? null,
+    row.name ?? null,
+    row.sort_order,
+  );
 }
 
-export function listMessages(db: Database.Database, sessionId: string): MessageRow[] {
+export function listMessages(db: SiaDatabase, sessionId: string): MessageRow[] {
   return db
     .prepare(
       `SELECT id, session_id, role, content, tool_calls, tool_call_id, name, sort_order, created_at
@@ -69,7 +83,7 @@ export function listMessages(db: Database.Database, sessionId: string): MessageR
     .all(sessionId) as MessageRow[];
 }
 
-export function nextSortOrder(db: Database.Database, sessionId: string): number {
+export function nextSortOrder(db: SiaDatabase, sessionId: string): number {
   const row = db
     .prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM messages WHERE session_id = ?")
     .get(sessionId) as { n: number };
@@ -77,7 +91,7 @@ export function nextSortOrder(db: Database.Database, sessionId: string): number 
 }
 
 export function upsertMemorySlot(
-  db: Database.Database,
+  db: SiaDatabase,
   id: string,
   label: string,
   content: string,
@@ -94,7 +108,7 @@ export function upsertMemorySlot(
   ).run(id, sessionId, label, content);
 }
 
-export function getMemorySlot(db: Database.Database, id: string): { content: string; label: string } | null {
+export function getMemorySlot(db: SiaDatabase, id: string): { content: string; label: string } | null {
   const row = db.prepare("SELECT content, label FROM memory_slots WHERE id = ?").get(id) as
     | { content: string; label: string }
     | undefined;
@@ -102,7 +116,7 @@ export function getMemorySlot(db: Database.Database, id: string): { content: str
 }
 
 export function listMemorySlotsBySession(
-  db: Database.Database,
+  db: SiaDatabase,
   sessionId: string,
 ): { id: string; label: string; content: string }[] {
   return db

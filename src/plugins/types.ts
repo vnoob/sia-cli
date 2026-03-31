@@ -1,9 +1,9 @@
-import type Database from "better-sqlite3";
+import type { SiaDatabase } from "../db/types.js";
 
 export interface ToolContext {
   cwd: string;
   sessionId: string;
-  db: Database.Database;
+  db: SiaDatabase;
   signal?: AbortSignal;
 }
 

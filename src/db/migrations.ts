@@ -44,4 +44,16 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
 CREATE INDEX IF NOT EXISTS idx_knowledge_source ON knowledge_chunks(source_uri);
 `,
   },
+  {
+    version: 2,
+    sql: `
+CREATE TABLE IF NOT EXISTS agent_context_meta (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  display_summary TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO agent_context_meta (id, display_summary) VALUES (1, '');
+`,
+  },
 ];

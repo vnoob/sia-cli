@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import { createAgentDbFileName } from "../context/files.js";
+import { refreshAgentDisplaySummary } from "../context/meta.js";
+import type { SiaDatabase } from "../db/types.js";
 import type { SiaConfig } from "../config/types.js";
 import { defaultConfig } from "../config/types.js";
-import { appendMessage, createSession, listMessages, nextSortOrder } from "../db/client.js";
+import { appendMessage, createSession, listMessages, nextSortOrder, openDatabase } from "../db/client.js";
 import { parseMentions, resolveMentions } from "../mentions/index.js";
 import { builtinTools, discoverPlugins, ToolRegistry } from "../plugins/index.js";
 import { globalPluginsDir, projectPluginsDir } from "../paths.js";
@@ -13,7 +15,11 @@ import { readUserBlock, createRl } from "./readline.js";
 import { ingestPath, runAssistantTurn } from "./runTurn.js";
 
 export interface ReplOptions {
-  db: Database.Database;
+  db: SiaDatabase;
+  /** Absolute path to the open agent context SQLite file. */
+  dbPath: string;
+  /** Directory where new agent context files are created (e.g. /context new). */
+  contextStoreDir: string;
   config: SiaConfig;
   configPath: string;
   providerName: string;
@@ -22,7 +28,7 @@ export interface ReplOptions {
   noPlugins: boolean;
 }
 
-function ensureSession(db: Database.Database, sessionId: string): void {
+function ensureSession(db: SiaDatabase, sessionId: string): void {
   const row = db.prepare("SELECT id FROM sessions WHERE id = ?").get(sessionId) as { id: string } | undefined;
   if (!row) createSession(db, sessionId);
 }
@@ -37,8 +43,7 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
     tools.merge(loaded);
   }
 
-  const rows = listMessages(opts.db, opts.sessionId);
-  const history = rowsToChatMessages(rows);
+  let history = rowsToChatMessages(listMessages(opts.db, opts.sessionId));
 
   const rl = createRl();
   let currentAbort = new AbortController();
@@ -48,7 +53,11 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
   };
   process.on("SIGINT", onSigint);
 
-  console.log(`sia-cli — session ${opts.sessionId}`);
+  const logContextLine = () => {
+    console.log(`sia-cli — ${opts.dbPath}`);
+    console.log(`session ${opts.sessionId}`);
+  };
+  logContextLine();
   console.log("Type /help for commands. Ctrl+C aborts the current stream.\n");
 
   try {
@@ -63,11 +72,12 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
         const arg = rest.join(" ").trim();
         if (cmd === "help" || cmd === "h") {
           console.log(`Commands:
-  /help          Show this help
-  /ingest <path> Chunk+embed a file into local knowledge (needs config.embedding)
-  /rag on|off    Toggle rag.enabled in memory for this process only (not persisted)
-  /session       Print current session id
-  exit | /exit   Quit`);
+  /help            Show this help
+  /ingest <path>   Chunk+embed a file into local knowledge (needs config.embedding)
+  /rag on|off      Toggle rag.enabled in memory for this process only (not persisted)
+  /session         Print current session id
+  /context new     New agent context (new DB file, new session, empty history)
+  exit | /exit     Quit`);
           continue;
         }
         if (cmd === "exit" || cmd === "quit") {
@@ -75,6 +85,26 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
         }
         if (cmd === "session") {
           console.log(opts.sessionId);
+          continue;
+        }
+        if (cmd === "context") {
+          const sub = arg.toLowerCase();
+          if (sub !== "new") {
+            console.error("Usage: /context new");
+            continue;
+          }
+          opts.db.close();
+          const name = createAgentDbFileName();
+          const newPath = path.join(opts.contextStoreDir, name);
+          opts.db = openDatabase(newPath);
+          opts.dbPath = newPath;
+          opts.contextStoreDir = path.dirname(newPath);
+          opts.sessionId = crypto.randomUUID();
+          ensureSession(opts.db, opts.sessionId);
+          history = rowsToChatMessages(listMessages(opts.db, opts.sessionId));
+          console.log(`Switched to new agent context: ${newPath}`);
+          logContextLine();
+          console.log("");
           continue;
         }
         if (cmd === "ingest") {
@@ -144,6 +174,7 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
           history,
           signal: currentAbort.signal,
         });
+        refreshAgentDisplaySummary(opts.db, opts.sessionId);
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") {
           process.stderr.write("[sia] Request aborted.\n");

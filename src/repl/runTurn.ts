@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import type { SiaDatabase } from "../db/types.js";
 import type { SiaConfig } from "../config/types.js";
 import { getApiKey, resolveProvider } from "../config/load.js";
 import { appendMessage, nextSortOrder } from "../db/client.js";
@@ -14,7 +14,7 @@ const DEFAULT_SYSTEM = `You are the sia-cli assistant. You help with local devel
 Be concise. When tools are available, use them when they clearly help answer the user.`;
 
 export interface RunTurnOptions {
-  db: Database.Database;
+  db: SiaDatabase;
   config: SiaConfig;
   configPath: string;
   providerName: string;
@@ -141,7 +141,7 @@ export async function runAssistantTurn(opts: RunTurnOptions): Promise<void> {
 }
 
 export async function ingestPath(opts: {
-  db: Database.Database;
+  db: SiaDatabase;
   config: SiaConfig;
   filePath: string;
   signal?: AbortSignal;

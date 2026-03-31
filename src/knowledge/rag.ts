@@ -1,11 +1,11 @@
-import type Database from "better-sqlite3";
+import type { SiaDatabase } from "../db/types.js";
 import type { SiaConfig } from "../config/types.js";
 import { getApiKey } from "../config/load.js";
 import { fetchEmbedding } from "../llm/embeddings.js";
 import { searchTopK } from "./store.js";
 
 export async function buildRagPrefix(opts: {
-  db: Database.Database;
+  db: SiaDatabase;
   config: SiaConfig;
   query: string;
   signal?: AbortSignal;

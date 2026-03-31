@@ -23,8 +23,9 @@ export function defaultConfigPath(home = getSiaHome()): string {
   return path.join(home, "config.json");
 }
 
-export function defaultDbPath(home = getSiaHome()): string {
-  return path.join(home, "sia.db");
+/** Directory for per-agent SQLite context files (under SIA_HOME by default). */
+export function defaultContextsDir(home = getSiaHome()): string {
+  return path.join(home, "contexts");
 }
 
 export function globalPluginsDir(home = getSiaHome()): string {

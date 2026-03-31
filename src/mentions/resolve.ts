@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type Database from "better-sqlite3";
+import type { SiaDatabase } from "../db/types.js";
 import type { MentionConfig } from "../config/types.js";
 import { listMessages, getMemorySlot, listMemorySlotsBySession, type MessageRow } from "../db/client.js";
 import type { ParsedMention } from "./parse.js";
@@ -47,7 +47,7 @@ export function resolveMentions(opts: {
   mentions: ParsedMention[];
   mentionConfig: MentionConfig;
   cwd: string;
-  db: Database.Database;
+  db: SiaDatabase;
   sessionId: string;
 }): ResolveMentionsResult {
   const warnings: string[] = [];
