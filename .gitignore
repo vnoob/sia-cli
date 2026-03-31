@@ -137,3 +137,9 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Local dev diary (append-only AI context; do not commit)
+docs/DEV-DIARY.md
+
+# Cursor IDE — rules, plans, chats, and other project-local Cursor files
+.cursor/
