@@ -24,7 +24,9 @@ export function readFileContext(tag: ContextTag): ContextContent {
     }
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split('\n');
-    const preview = lines.length > MAX_FILE_PREVIEW_LINES ? lines.slice(0, MAX_FILE_PREVIEW_LINES).join('\n') + '\n... (truncated)' : content;
+    const preview = lines.length > MAX_FILE_PREVIEW_LINES
+      ? lines.slice(0, MAX_FILE_PREVIEW_LINES).join('\n') + '\n... (truncated)'
+      : content;
     return { tag, content: `File: ${filePath}\n\`\`\`\n${preview}\n\`\`\`` };
   } catch (err: any) {
     return { tag, content: '', error: `Cannot read ${filePath}: ${err.message}` };

@@ -52,6 +52,7 @@ export const searchTool: Tool = {
     if (results.length === 0) {
       return `No matches found for "${pattern}" in ${searchDir}`;
     }
-    return results.slice(0, MAX_RESULTS).join('\n') + (results.length > MAX_RESULTS ? `\n... and ${results.length - MAX_RESULTS} more matches` : '');
+    const truncated = results.length > MAX_RESULTS ? `\n... and ${results.length - MAX_RESULTS} more matches` : '';
+    return results.slice(0, MAX_RESULTS).join('\n') + truncated;
   }
 };

@@ -3,6 +3,8 @@ import chalk from 'chalk';
 import { ChatSession } from './session';
 import { HistoryStorage } from '../storage/history';
 
+const HISTORY_PREVIEW_LENGTH = 60;
+
 const BANNER = `
 ${chalk.cyan('╔══════════════════════════════════╗')}
 ${chalk.cyan('║')}  ${chalk.bold.cyan('Sia')} ${chalk.gray('- Terminal AI Assistant')}      ${chalk.cyan('║')}
@@ -180,9 +182,9 @@ export class ChatInterface {
       const date = new Date(s.updatedAt).toLocaleString();
       const msgCount = s.messages.length;
       const rawMsg = s.messages.find(m => m.role === 'user')?.content || '(empty)';
-      const firstMsg = rawMsg.slice(0, 60);
+      const firstMsg = rawMsg.slice(0, HISTORY_PREVIEW_LENGTH);
       console.log(`  ${chalk.cyan(i + 1 + '.')} ${chalk.gray(date)} (${msgCount} messages)`);
-      console.log(`     ${chalk.white(firstMsg)}${rawMsg.length > 60 ? '...' : ''}`);
+      console.log(`     ${chalk.white(firstMsg)}${rawMsg.length > HISTORY_PREVIEW_LENGTH ? '...' : ''}`);
     });
     console.log();
   }
@@ -202,6 +204,8 @@ export class ChatInterface {
     const keyName = args[0];
     
     // Temporarily disable echo for secure input
+    type RawTTY = NodeJS.ReadStream & { setRawMode(mode: boolean): void };
+    const rawStdin = process.stdin as RawTTY;
     const rl2 = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -212,14 +216,12 @@ export class ChatInterface {
       process.stdout.write(chalk.yellow(`Enter value for '${keyName}' (input hidden): `));
       // Mute output — setRawMode is only available on TTY streams
       if (process.stdin.isTTY) {
-        (process.stdin as NodeJS.ReadStream & { setRawMode(mode: boolean): void }).setRawMode(true);
+        rawStdin.setRawMode(true);
       }
       
       let value = '';
       const onData = (char: Buffer) => {
         const c = char.toString();
-        type RawTTY = NodeJS.ReadStream & { setRawMode(mode: boolean): void };
-        const rawStdin = process.stdin as RawTTY;
         if (c === '\r' || c === '\n') {
           process.stdin.removeListener('data', onData);
           if (process.stdin.isTTY) {

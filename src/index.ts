@@ -6,6 +6,8 @@ import { PreferencesStorage } from './storage/preferences';
 import { KeyStorage } from './storage/keys';
 import { HistoryStorage } from './storage/history';
 
+const HISTORY_PREVIEW_LENGTH = 70;
+
 const program = new Command();
 
 program
@@ -131,9 +133,10 @@ program
     sessions.slice(0, 20).forEach((s, i) => {
       const date = new Date(s.updatedAt).toLocaleString();
       const msgCount = s.messages.length;
-      const firstMsg = s.messages.find(m => m.role === 'user')?.content.slice(0, 70) || '(empty)';
+      const rawMsg = s.messages.find(m => m.role === 'user')?.content || '(empty)';
+      const firstMsg = rawMsg.slice(0, HISTORY_PREVIEW_LENGTH);
       console.log(`\n  ${chalk.cyan((i + 1) + '.')} ${chalk.gray(date)} | ${msgCount} messages`);
-      console.log(`     ${chalk.white(firstMsg)}${firstMsg.length > 70 ? '...' : ''}`);
+      console.log(`     ${chalk.white(firstMsg)}${rawMsg.length > HISTORY_PREVIEW_LENGTH ? '...' : ''}`);
     });
     console.log();
   });
