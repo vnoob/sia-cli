@@ -13,6 +13,7 @@ import { globalPluginsDir, projectPluginsDir } from "../paths.js";
 import { rowsToChatMessages } from "./history.js";
 import { readUserBlock, createRl } from "./readline.js";
 import { ingestPath, runAssistantTurn } from "./runTurn.js";
+import { runSettingsMenu } from "./settings.js";
 
 export interface ReplOptions {
   db: SiaDatabase;
@@ -73,6 +74,7 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
         if (cmd === "help" || cmd === "h") {
           console.log(`Commands:
   /help            Show this help
+  /settings        Configure AI provider (OpenAI, Gemini, Claude, or custom)
   /ingest <path>   Chunk+embed a file into local knowledge (needs config.embedding)
   /rag on|off      Toggle rag.enabled in memory for this process only (not persisted)
   /session         Print current session id
@@ -129,6 +131,14 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
             continue;
           }
           console.log(`RAG ${opts.config.rag.enabled ? "enabled" : "disabled"} (this session only).`);
+          continue;
+        }
+        if (cmd === "settings") {
+          const result = await runSettingsMenu(rl, opts.configPath, opts.config, opts.providerName);
+          if (result.changed) {
+            opts.config = result.config;
+            opts.providerName = result.providerName;
+          }
           continue;
         }
         console.error(`Unknown command: /${cmd}. Try /help.`);

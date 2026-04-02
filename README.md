@@ -24,7 +24,23 @@ node dist/cli.js
 
 ## First run
 
-On first launch, `sia` ensures a **config home** directory and writes default `config.json` if missing:
+On first launch in an interactive terminal, `sia` shows a startup menu:
+
+```
+=== sia-cli ===
+
+  1. Start conversation
+  2. Settings: Local (Ollama)
+  0. Exit
+```
+
+- **Option 1** begins the chat REPL with the current provider
+- **Option 2** opens the settings menu to select or configure an AI provider (OpenAI, Gemini, Claude, or custom)
+- **Option 0** exits without starting
+
+The menu displays the currently configured provider name. Use `--provider <name>` to skip the menu and start directly with a specific provider.
+
+`sia` also ensures a **config home** directory and writes default `config.json` if missing:
 
 | Platform | Default config / plugin home (`SIA_HOME`) |
 |----------|-------------------------------------------|
@@ -88,6 +104,7 @@ Paths are resolved from `--cwd` (default: process cwd).
 | Command | Description |
 |---------|-------------|
 | `/help` | Short help |
+| `/settings` | Interactive menu to select AI provider (OpenAI, Gemini, Claude, or custom); saves to `config.json` |
 | `/ingest <path>` | Chunk file, call embeddings API, store vectors locally (needs `config.embedding`) |
 | `/rag on` / `/rag off` | Enable or disable RAG for **this process only** (does not rewrite `config.json`) |
 | `/session` | Print current session id |
@@ -95,6 +112,24 @@ Paths are resolved from `--cwd` (default: process cwd).
 | `/exit`, `exit`, `quit` | Leave the REPL |
 
 **Ctrl+C** aborts the in-flight HTTP stream; you can continue with a new line.
+
+### Provider setup with `/settings`
+
+Run `/settings` in the REPL to configure your AI provider interactively. Choose from:
+
+1. **OpenAI** — uses `OPENAI_API_KEY`
+2. **Google Gemini** — uses `GEMINI_API_KEY`
+3. **Anthropic Claude** — uses `ANTHROPIC_API_KEY`
+4. **Custom** — any OpenAI-compatible endpoint (Ollama, LM Studio, Azure, OpenRouter, etc.)
+
+The menu saves the provider to `config.json` and sets it as default.
+
+**Token management:** When you select a provider, the wizard checks if a token already exists:
+- **No token found** — prompts you to paste one; validates it before applying
+- **Token exists** — offers three choices: keep, change, or clear
+- **Invalid/expired token** — shows the error reason (e.g. "Invalid or unauthorized API key", "Rate limited or quota exceeded") and lets you retry or use it anyway
+
+Tokens apply to the current process only (never written to `config.json`). To persist keys across sessions, set them as environment variables.
 
 ## Config (`config.json`)
 
@@ -188,4 +223,5 @@ npm test         # vitest
 
 - 2026-03-31: Per-agent context SQLite files (`uuid_timestamp.db`), startup contexts-dir prompt and list, `SIA_CONTEXTS_DIR` / `--contexts-dir` / `--context-db` / `--new-context`, `/context new`, `agent_context_meta.display_summary` for list lines.
 - 2026-03-31: SQLite via Node `node:sqlite` (Node ≥22.13); remove `better-sqlite3`; shared `SiaDatabase` type in `src/db/types.ts`.
+- 2026-04-02: Interactive startup menu and `/settings` command for AI provider selection (OpenAI, Gemini, Claude, custom); token validation and management with keep/change/clear options; API key status warnings.
 

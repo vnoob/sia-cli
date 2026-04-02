@@ -43,3 +43,14 @@ export function getApiKey(apiKeyEnv?: string): string | undefined {
   if (!apiKeyEnv?.trim()) return undefined;
   return process.env[apiKeyEnv]?.trim();
 }
+
+/**
+ * Atomically write config to disk (write temp file, then rename).
+ */
+export function saveConfig(filePath: string, config: SiaConfig): void {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = path.join(dir, `.config-${Date.now()}.tmp`);
+  fs.writeFileSync(tmp, JSON.stringify(config, null, 2), "utf8");
+  fs.renameSync(tmp, filePath);
+}

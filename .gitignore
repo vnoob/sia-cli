@@ -141,5 +141,8 @@ vite.config.ts.timestamp-*
 # Local dev diary (append-only AI context; do not commit)
 docs/DEV-DIARY.md
 
+# Per-agent SQLite context DBs created by `sia` / npm run dev (e.g. under SIA_HOME/contexts)
+*.db
+
 # Cursor IDE — rules, plans, chats, and other project-local Cursor files
 .cursor/

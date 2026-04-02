@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import crypto from "node:crypto";
 import path from "node:path";
+import readline from "node:readline";
 import { resolveAgentContextDb, resolveContextsDir } from "./context/pick.js";
 import { loadConfig } from "./config/load.js";
+import type { SiaConfig } from "./config/types.js";
 import {
   defaultConfigPath,
   defaultContextsDir,
@@ -10,6 +12,7 @@ import {
   getSiaHome,
 } from "./paths.js";
 import { runRepl, writeDefaultConfigIfMissing } from "./repl/index.js";
+import { runSettingsMenu } from "./repl/settings.js";
 
 function parseArgs(argv: string[]): {
   configPath: string;
@@ -75,6 +78,86 @@ Environment:
   return { configPath, provider, session, noPlugins, cwd, contextsDir, contextDb, newContext };
 }
 
+function question(rl: readline.Interface, prompt: string): Promise<string> {
+  return new Promise((resolve) => rl.question(prompt, resolve));
+}
+
+function getProviderDisplayName(config: SiaConfig): string {
+  const key = config.defaultProvider;
+  const provider = config.providers[key];
+  if (!provider) return key;
+  
+  const knownNames: Record<string, string> = {
+    openai: "OpenAI",
+    gemini: "Google Gemini",
+    claude: "Anthropic Claude",
+    local: "Local (Ollama)",
+  };
+  return knownNames[key] || key;
+}
+
+function checkApiKeyStatus(config: SiaConfig): { hasKey: boolean; envVar?: string } {
+  const provider = config.providers[config.defaultProvider];
+  if (!provider?.apiKeyEnv) {
+    return { hasKey: true };
+  }
+  const key = process.env[provider.apiKeyEnv]?.trim();
+  return { hasKey: Boolean(key), envVar: provider.apiKeyEnv };
+}
+
+async function showStartupMenu(
+  rl: readline.Interface,
+  config: SiaConfig,
+  configPath: string,
+): Promise<{ config: SiaConfig; providerName: string; action: "chat" | "exit" }> {
+  let currentConfig = config;
+  let providerName = config.defaultProvider;
+
+  while (true) {
+    const displayName = getProviderDisplayName(currentConfig);
+    const keyStatus = checkApiKeyStatus(currentConfig);
+    const keyWarning = keyStatus.hasKey ? "" : " (no API key!)";
+    
+    console.log("\n=== sia-cli ===\n");
+    console.log("  1. Start conversation");
+    console.log(`  2. Settings: ${displayName}${keyWarning}`);
+    console.log("  0. Exit\n");
+
+    if (!keyStatus.hasKey) {
+      console.log(`  Note: ${keyStatus.envVar} is not set. Configure it in Settings or set the env var.\n`);
+    }
+
+    const choice = await question(rl, "Choice [1]: ");
+    const num = choice.trim() === "" ? 1 : parseInt(choice.trim(), 10);
+
+    if (num === 0) {
+      return { config: currentConfig, providerName, action: "exit" };
+    }
+
+    if (num === 1 || isNaN(num)) {
+      if (!keyStatus.hasKey) {
+        console.log(`\n  WARNING: No API key found for ${keyStatus.envVar}.`);
+        const proceed = await question(rl, "  Start anyway? (y/N): ");
+        if (proceed.trim().toLowerCase() !== "y") {
+          continue;
+        }
+      }
+      return { config: currentConfig, providerName, action: "chat" };
+    }
+
+    if (num === 2) {
+      const result = await runSettingsMenu(rl, configPath, currentConfig, providerName);
+      if (result.changed) {
+        currentConfig = result.config;
+        providerName = result.providerName;
+      }
+      continue;
+    }
+
+    console.log("Invalid choice.");
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   const home = getSiaHome();
@@ -82,9 +165,27 @@ async function main(): Promise<void> {
 
   const configPath = args.configPath || defaultConfigPath(home);
   writeDefaultConfigIfMissing(configPath);
-  const config = loadConfig(configPath);
+  let config = loadConfig(configPath);
 
   const isTTY = Boolean(process.stdin.isTTY);
+
+  let providerName = args.provider || config.defaultProvider;
+
+  if (isTTY && !args.provider) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const menuResult = await showStartupMenu(rl, config, configPath);
+      config = menuResult.config;
+      providerName = menuResult.providerName;
+      if (menuResult.action === "exit") {
+        rl.close();
+        return;
+      }
+    } finally {
+      rl.close();
+    }
+  }
+
   const defaultCtxDir = defaultContextsDir(home);
   const contextsDir = await resolveContextsDir({
     defaultDir: defaultCtxDir,
@@ -102,7 +203,6 @@ async function main(): Promise<void> {
   });
 
   const sessionId = args.session ?? crypto.randomUUID();
-  const providerName = args.provider || config.defaultProvider;
   const contextStoreDir = path.dirname(dbPath);
 
   process.chdir(args.cwd);
