@@ -30,7 +30,7 @@ On first launch in an interactive terminal, `sia` shows a startup menu:
 === sia-cli ===
 
   1. Start conversation
-  2. Settings: Local (Ollama)
+  2. Settings: Local (Ollama) — llama3.2
   0. Exit
 ```
 
@@ -38,7 +38,7 @@ On first launch in an interactive terminal, `sia` shows a startup menu:
 - **Option 2** opens the settings menu to select or configure an AI provider (OpenAI, Gemini, Claude, or custom)
 - **Option 0** exits without starting
 
-The menu displays the currently configured provider name. Use `--provider <name>` to skip the menu and start directly with a specific provider.
+The menu shows the configured provider and **chat model** (same pattern on the REPL banner after start). The `/settings` menu prints a **Current:** line with that pair. Use `--provider <name>` to skip the menu and start directly with a specific provider.
 
 `sia` also ensures a **config home** directory and writes default `config.json` if missing:
 
@@ -105,6 +105,7 @@ Paths are resolved from `--cwd` (default: process cwd).
 |---------|-------------|
 | `/help` | Short help |
 | `/settings` | Interactive menu to select AI provider (OpenAI, Gemini, Claude, or custom); saves to `config.json` |
+| `/plugins` | List available plugins, their load status, and browse tools |
 | `/ingest <path>` | Chunk file, call embeddings API, store vectors locally (needs `config.embedding`) |
 | `/rag on` / `/rag off` | Enable or disable RAG for **this process only** (does not rewrite `config.json`) |
 | `/session` | Print current session id |
@@ -118,7 +119,7 @@ Paths are resolved from `--cwd` (default: process cwd).
 Run `/settings` in the REPL to configure your AI provider interactively. Choose from:
 
 1. **OpenAI** — uses `OPENAI_API_KEY`
-2. **Google Gemini** — uses `GEMINI_API_KEY`
+2. **Google Gemini** — uses `GEMINI_API_KEY`; default chat model is `gemini-2.5-flash` (stable, supports tools; Gemini 3.x requires thought_signature handling not yet implemented)
 3. **Anthropic Claude** — uses `ANTHROPIC_API_KEY`
 4. **Custom** — any OpenAI-compatible endpoint (Ollama, LM Studio, Azure, OpenRouter, etc.)
 
@@ -179,14 +180,41 @@ Default provider points at local Ollama. Add cloud endpoints explicitly; set `ap
 
 ## Plugins
 
-Plugins live in subfolders of:
+Plugins extend sia-cli with custom tools that the AI can use. They live in subfolders of:
 
-1. `SIA_HOME/plugins/<name>/`
-2. `.sia/plugins/<name>/` (under `--cwd`)
+1. **Global:** `SIA_HOME/plugins/<name>/` — shared across all projects
+2. **Project:** `.sia/plugins/<name>/` (under `--cwd`) — project-specific
 
-Later directories in that order **override** tools with the same name.
+Later directories **override** tools with the same name (project beats global).
 
-Each plugin needs `sia-plugin.json`:
+### Quick start: Install a plugin
+
+**Windows (PowerShell):**
+
+```powershell
+# Copy plugin-fs to global plugins (enables filesystem tools)
+Copy-Item -Recurse examples\plugin-fs "$env:LOCALAPPDATA\sia-cli\plugins\fs"
+
+# Or install in current project only
+New-Item -ItemType Directory -Force -Path .sia\plugins
+Copy-Item -Recurse examples\plugin-fs .sia\plugins\fs
+```
+
+**Linux/macOS:**
+
+```bash
+# Global install
+cp -r examples/plugin-fs ~/.local/share/sia-cli/plugins/fs
+
+# Or project-only
+mkdir -p .sia/plugins && cp -r examples/plugin-fs .sia/plugins/fs
+```
+
+Restart sia-cli — the plugin loads automatically. Use `--no-plugins` to disable.
+
+### Creating a plugin
+
+Each plugin folder needs `sia-plugin.json`:
 
 ```json
 {
@@ -195,16 +223,66 @@ Each plugin needs `sia-plugin.json`:
 }
 ```
 
-The entry module’s **default export** is an async function `(api) => { ... }` that calls `api.registerTool({ name, description, parameters, handler })`.
+The entry module's **default export** is an async function that registers tools:
 
-- `parameters` must be a JSON Schema–style object (`type`, `properties`, etc.).
-- `handler` is `async (args, ctx) => string` where `ctx` has `cwd`, `sessionId`, `db`, and `signal`. Return a **string** (usually JSON) for the model.
+```javascript
+export default async function register(api) {
+  api.registerTool({
+    name: "my_tool",
+    description: "What this tool does (shown to AI)",
+    parameters: {
+      type: "object",
+      properties: {
+        arg1: { type: "string", description: "First argument" },
+      },
+      required: ["arg1"],
+    },
+    async handler(args, ctx) {
+      // args = parsed JSON from AI
+      // ctx = { cwd, sessionId, db, signal }
+      return JSON.stringify({ result: "..." }); // Must return string
+    },
+  });
+}
+```
 
-Plugins run with full Node.js privileges—only install code you trust.
+**Key points:**
+- `parameters` must be JSON Schema format (`type: "object"`, `properties`, etc.)
+- `handler` receives `args` (from AI) and `ctx` (runtime context)
+- `ctx.cwd` — working directory (use for safe path resolution)
+- `ctx.db` — SQLite database for this agent context
+- `ctx.signal` — AbortSignal for cancellation
+- Return value **must be a string** (usually JSON) — this is what the AI sees
 
-See [examples/plugin-demo/](examples/plugin-demo/) for a minimal plugin.
+Plugins run with full Node.js privileges — only install code you trust.
+
+### Example plugins
+
+| Plugin | Location | Description |
+|--------|----------|-------------|
+| `plugin-demo` | [examples/plugin-demo/](examples/plugin-demo/) | Minimal example: single greeting tool |
+| `plugin-fs` | [examples/plugin-fs/](examples/plugin-fs/) | Filesystem tools: read, write, list, mkdir, delete, rename |
+
+### Filesystem plugin tools
+
+The `plugin-fs` example provides tools for file operations (copy to enable):
+
+| Tool | Description |
+|------|-------------|
+| `sia_fs_read` | Read file contents (max 512KB) |
+| `sia_fs_write` | Write/create file (max 1MB) |
+| `sia_fs_append` | Append to file |
+| `sia_fs_list` | List directory contents |
+| `sia_fs_mkdir` | Create directory |
+| `sia_fs_delete` | Delete file or directory |
+| `sia_fs_exists` | Check if path exists |
+| `sia_fs_rename` | Rename/move file or directory |
+
+**Security:** All paths are resolved relative to `--cwd` and cannot escape it.
 
 ## Built-in tools
+
+These are always available (no plugin needed):
 
 | Tool | Purpose |
 |------|---------|
@@ -224,4 +302,9 @@ npm test         # vitest
 - 2026-03-31: Per-agent context SQLite files (`uuid_timestamp.db`), startup contexts-dir prompt and list, `SIA_CONTEXTS_DIR` / `--contexts-dir` / `--context-db` / `--new-context`, `/context new`, `agent_context_meta.display_summary` for list lines.
 - 2026-03-31: SQLite via Node `node:sqlite` (Node ≥22.13); remove `better-sqlite3`; shared `SiaDatabase` type in `src/db/types.ts`.
 - 2026-04-02: Interactive startup menu and `/settings` command for AI provider selection (OpenAI, Gemini, Claude, custom); token validation and management with keep/change/clear options; API key status warnings.
-
+- 2026-04-04: Startup menu, REPL banner, and `/settings` show active provider and chat model (`describeChatStack`).
+- 2026-04-04: Gemini preset default model changed to `gemini-2.5-flash` (stable, supports tools); Gemini 3.x requires thought_signature handling not yet implemented.
+- 2026-04-04: Token validation now shows full API response body for easier debugging (e.g. quota details, model deprecation).
+- 2026-04-04: Fix readline paste issues on Windows by pausing readline around console output; normalize pasted API keys.
+- 2026-04-04: Added `plugin-fs` example with filesystem tools (read, write, list, mkdir, delete, rename, exists, append).
+- 2026-04-04: Added `/plugins` command to list available plugins, their load status, and browse tool descriptions.

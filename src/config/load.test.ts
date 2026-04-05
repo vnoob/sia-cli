@@ -52,7 +52,7 @@ describe("saveConfig", () => {
         gemini: {
           type: "openai-compatible",
           baseURL: "https://example.com/v1",
-          model: "gemini-2.0-flash",
+          model: "gemini-2.5-flash",
           apiKeyEnv: "GEMINI_API_KEY",
         },
       },

@@ -8,6 +8,19 @@ export function question(rl: readline.Interface, prompt: string): Promise<string
   return new Promise((resolve) => rl.question(prompt, resolve));
 }
 
+/**
+ * Run synchronous stdout writes while readline is paused so the next `question()` prompt
+ * still accepts input correctly (paste and typing) on Windows / integrated terminals.
+ */
+export function withReadlineIdle(rl: readline.Interface, fn: () => void): void {
+  rl.pause();
+  try {
+    fn();
+  } finally {
+    rl.resume();
+  }
+}
+
 export async function readUserBlock(rl: readline.Interface): Promise<string> {
   const parts: string[] = [];
   while (true) {

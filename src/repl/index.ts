@@ -4,12 +4,14 @@ import crypto from "node:crypto";
 import { createAgentDbFileName } from "../context/files.js";
 import { refreshAgentDisplaySummary } from "../context/meta.js";
 import type { SiaDatabase } from "../db/types.js";
+import { describeChatStack } from "../config/provider-label.js";
 import type { SiaConfig } from "../config/types.js";
 import { defaultConfig } from "../config/types.js";
 import { appendMessage, createSession, listMessages, nextSortOrder, openDatabase } from "../db/client.js";
 import { parseMentions, resolveMentions } from "../mentions/index.js";
 import { builtinTools, discoverPlugins, ToolRegistry } from "../plugins/index.js";
 import { globalPluginsDir, projectPluginsDir } from "../paths.js";
+import { runPluginsMenu } from "./plugins-menu.js";
 import { rowsToChatMessages } from "./history.js";
 import { readUserBlock, createRl } from "./readline.js";
 import { ingestPath, runAssistantTurn } from "./runTurn.js";
@@ -57,6 +59,7 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
   const logContextLine = () => {
     console.log(`sia-cli — ${opts.dbPath}`);
     console.log(`session ${opts.sessionId}`);
+    console.log(describeChatStack(opts.config, opts.providerName));
   };
   logContextLine();
   console.log("Type /help for commands. Ctrl+C aborts the current stream.\n");
@@ -75,6 +78,7 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
           console.log(`Commands:
   /help            Show this help
   /settings        Configure AI provider (OpenAI, Gemini, Claude, or custom)
+  /plugins         List available plugins and their tools
   /ingest <path>   Chunk+embed a file into local knowledge (needs config.embedding)
   /rag on|off      Toggle rag.enabled in memory for this process only (not persisted)
   /session         Print current session id
@@ -139,6 +143,16 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
             opts.config = result.config;
             opts.providerName = result.providerName;
           }
+          continue;
+        }
+        if (cmd === "plugins") {
+          await runPluginsMenu({
+            rl,
+            globalPluginsDir: globalPluginsDir(),
+            projectPluginsDir: projectPluginsDir(opts.cwd),
+            tools,
+            noPlugins: opts.noPlugins,
+          });
           continue;
         }
         console.error(`Unknown command: /${cmd}. Try /help.`);

@@ -4,6 +4,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { resolveAgentContextDb, resolveContextsDir } from "./context/pick.js";
 import { loadConfig } from "./config/load.js";
+import { describeChatStack } from "./config/provider-label.js";
 import type { SiaConfig } from "./config/types.js";
 import {
   defaultConfigPath,
@@ -12,6 +13,7 @@ import {
   getSiaHome,
 } from "./paths.js";
 import { runRepl, writeDefaultConfigIfMissing } from "./repl/index.js";
+import { withReadlineIdle } from "./repl/readline.js";
 import { runSettingsMenu } from "./repl/settings.js";
 
 function parseArgs(argv: string[]): {
@@ -82,20 +84,6 @@ function question(rl: readline.Interface, prompt: string): Promise<string> {
   return new Promise((resolve) => rl.question(prompt, resolve));
 }
 
-function getProviderDisplayName(config: SiaConfig): string {
-  const key = config.defaultProvider;
-  const provider = config.providers[key];
-  if (!provider) return key;
-  
-  const knownNames: Record<string, string> = {
-    openai: "OpenAI",
-    gemini: "Google Gemini",
-    claude: "Anthropic Claude",
-    local: "Local (Ollama)",
-  };
-  return knownNames[key] || key;
-}
-
 function checkApiKeyStatus(config: SiaConfig): { hasKey: boolean; envVar?: string } {
   const provider = config.providers[config.defaultProvider];
   if (!provider?.apiKeyEnv) {
@@ -114,18 +102,19 @@ async function showStartupMenu(
   let providerName = config.defaultProvider;
 
   while (true) {
-    const displayName = getProviderDisplayName(currentConfig);
+    const stack = describeChatStack(currentConfig);
     const keyStatus = checkApiKeyStatus(currentConfig);
     const keyWarning = keyStatus.hasKey ? "" : " (no API key!)";
     
-    console.log("\n=== sia-cli ===\n");
-    console.log("  1. Start conversation");
-    console.log(`  2. Settings: ${displayName}${keyWarning}`);
-    console.log("  0. Exit\n");
-
-    if (!keyStatus.hasKey) {
-      console.log(`  Note: ${keyStatus.envVar} is not set. Configure it in Settings or set the env var.\n`);
-    }
+    withReadlineIdle(rl, () => {
+      console.log("\n=== sia-cli ===\n");
+      console.log("  1. Start conversation");
+      console.log(`  2. Settings: ${stack}${keyWarning}`);
+      console.log("  0. Exit\n");
+      if (!keyStatus.hasKey) {
+        console.log(`  Note: ${keyStatus.envVar} is not set. Configure it in Settings or set the env var.\n`);
+      }
+    });
 
     const choice = await question(rl, "Choice [1]: ");
     const num = choice.trim() === "" ? 1 : parseInt(choice.trim(), 10);
@@ -136,7 +125,7 @@ async function showStartupMenu(
 
     if (num === 1 || isNaN(num)) {
       if (!keyStatus.hasKey) {
-        console.log(`\n  WARNING: No API key found for ${keyStatus.envVar}.`);
+        withReadlineIdle(rl, () => console.log(`\n  WARNING: No API key found for ${keyStatus.envVar}.`));
         const proceed = await question(rl, "  Start anyway? (y/N): ");
         if (proceed.trim().toLowerCase() !== "y") {
           continue;
@@ -154,7 +143,7 @@ async function showStartupMenu(
       continue;
     }
 
-    console.log("Invalid choice.");
+    withReadlineIdle(rl, () => console.log("Invalid choice."));
   }
 }
 

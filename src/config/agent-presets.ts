@@ -23,7 +23,9 @@ export const agentPresets: AgentPreset[] = [
     label: "Google Gemini",
     providerKey: "gemini",
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-    defaultModel: "gemini-2.0-flash",
+    // NOTE: Gemini 3.x models require thought_signature handling for tool calls (not yet implemented).
+    // Using stable 2.5-flash which works with tools out of the box.
+    defaultModel: "gemini-2.5-flash",
     apiKeyEnv: "GEMINI_API_KEY",
   },
   {
