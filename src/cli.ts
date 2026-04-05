@@ -6,6 +6,7 @@ import { resolveAgentContextDb, resolveContextsDir } from "./context/pick.js";
 import { loadConfig } from "./config/load.js";
 import { describeChatStack } from "./config/provider-label.js";
 import type { SiaConfig } from "./config/types.js";
+import { initLogger, getLogger } from "./logging.js";
 import {
   defaultConfigPath,
   defaultContextsDir,
@@ -25,6 +26,7 @@ function parseArgs(argv: string[]): {
   contextsDir: string;
   contextDb: string;
   newContext: boolean;
+  debug: boolean;
 } {
   let configPath = "";
   let provider = "";
@@ -34,6 +36,7 @@ function parseArgs(argv: string[]): {
   let contextsDir = "";
   let contextDb = "";
   let newContext = false;
+  let debug = false;
 
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -45,6 +48,8 @@ function parseArgs(argv: string[]): {
       session = argv[++i];
     } else if (a === "--no-plugins") {
       noPlugins = true;
+    } else if (a === "--debug") {
+      debug = true;
     } else if (a === "--cwd" && argv[i + 1]) {
       cwd = path.resolve(argv[++i]);
     } else if (a === "--contexts-dir" && argv[i + 1]) {
@@ -67,6 +72,7 @@ Options:
   --new-context         Create a new agent context file in the contexts directory
   --no-plugins          Skip loading plugins from SIA_HOME/plugins and .sia/plugins
   --cwd <path>          Working directory for @ file mentions and plugins
+  --debug               Enable debug logging to console
   -h, --help            Show help
 
 Environment:
@@ -77,7 +83,7 @@ Environment:
     }
   }
 
-  return { configPath, provider, session, noPlugins, cwd, contextsDir, contextDb, newContext };
+  return { configPath, provider, session, noPlugins, cwd, contextsDir, contextDb, newContext, debug };
 }
 
 function question(rl: readline.Interface, prompt: string): Promise<string> {
@@ -152,9 +158,16 @@ async function main(): Promise<void> {
   const home = getSiaHome();
   ensureDir(home);
 
+  const logger = initLogger({
+    minLevel: args.debug ? "debug" : "info",
+    console: args.debug,
+  });
+  logger.info("cli", "sia-cli starting", { home, cwd: args.cwd, debug: args.debug });
+
   const configPath = args.configPath || defaultConfigPath(home);
   writeDefaultConfigIfMissing(configPath);
   let config = loadConfig(configPath);
+  logger.info("cli", "Config loaded", { configPath, defaultProvider: config.defaultProvider });
 
   const isTTY = Boolean(process.stdin.isTTY);
 

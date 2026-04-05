@@ -8,6 +8,7 @@ import { describeChatStack } from "../config/provider-label.js";
 import type { SiaConfig } from "../config/types.js";
 import { defaultConfig } from "../config/types.js";
 import { appendMessage, createSession, listMessages, nextSortOrder, openDatabase } from "../db/client.js";
+import { getLogger } from "../logging.js";
 import { parseMentions, resolveMentions } from "../mentions/index.js";
 import { builtinTools, discoverPlugins, ToolRegistry } from "../plugins/index.js";
 import { globalPluginsDir, projectPluginsDir } from "../paths.js";
@@ -60,6 +61,9 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
     console.log(`sia-cli — ${opts.dbPath}`);
     console.log(`session ${opts.sessionId}`);
     console.log(describeChatStack(opts.config, opts.providerName));
+    const toolCount = tools.list().length;
+    const pluginTools = tools.list().filter((t) => t.source?.startsWith("plugin:")).length;
+    console.log(`Tools: ${toolCount} total (${pluginTools} from plugins)`);
   };
   logContextLine();
   console.log("Type /help for commands. Ctrl+C aborts the current stream.\n");
@@ -79,6 +83,8 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
   /help            Show this help
   /settings        Configure AI provider (OpenAI, Gemini, Claude, or custom)
   /plugins         List available plugins and their tools
+  /tools-test      Test that tools are working (creates a test file)
+  /logs [n]        Show log file path and last n lines (default: 20)
   /ingest <path>   Chunk+embed a file into local knowledge (needs config.embedding)
   /rag on|off      Toggle rag.enabled in memory for this process only (not persisted)
   /session         Print current session id
@@ -153,6 +159,84 @@ export async function runRepl(opts: ReplOptions): Promise<void> {
             tools,
             noPlugins: opts.noPlugins,
           });
+          continue;
+        }
+        if (cmd === "tools-test") {
+          console.log("\nTesting tools...\n");
+          const allTools = tools.list();
+          console.log(`Registered tools (${allTools.length}):`);
+          for (const t of allTools) {
+            console.log(`  - ${t.name} [${t.source ?? "unknown"}]`);
+          }
+          console.log("");
+
+          const fsList = allTools.filter((t) => t.name.startsWith("sia_fs_"));
+          if (fsList.length === 0) {
+            console.log("WARNING: No filesystem tools found!");
+            console.log("Install the fs plugin:");
+            console.log(`  Copy-Item -Recurse examples\\plugin-fs "$env:LOCALAPPDATA\\sia-cli\\plugins\\fs"`);
+            console.log("");
+            continue;
+          }
+
+          const testFile = ".sia-tools-test.txt";
+          const testContent = `Tools test - ${new Date().toISOString()}`;
+          const ctx = { cwd: opts.cwd, sessionId: opts.sessionId, db: opts.db, signal: currentAbort.signal };
+
+          console.log(`Testing sia_fs_write: Creating ${testFile}...`);
+          const writeResult = await tools.invoke("sia_fs_write", { path: testFile, content: testContent }, ctx);
+          const writeJson = JSON.parse(writeResult);
+          if (writeJson.ok) {
+            console.log(`  SUCCESS: Created ${testFile}`);
+          } else {
+            console.log(`  FAILED: ${writeJson.error}`);
+            continue;
+          }
+
+          console.log(`Testing sia_fs_read: Reading ${testFile}...`);
+          const readResult = await tools.invoke("sia_fs_read", { path: testFile }, ctx);
+          const readJson = JSON.parse(readResult);
+          if (readJson.content === testContent) {
+            console.log(`  SUCCESS: Content matches`);
+          } else if (readJson.error) {
+            console.log(`  FAILED: ${readJson.error}`);
+          } else {
+            console.log(`  FAILED: Content mismatch`);
+          }
+
+          console.log(`Testing sia_fs_delete: Removing ${testFile}...`);
+          const delResult = await tools.invoke("sia_fs_delete", { path: testFile }, ctx);
+          const delJson = JSON.parse(delResult);
+          if (delJson.ok) {
+            console.log(`  SUCCESS: Deleted ${testFile}`);
+          } else {
+            console.log(`  FAILED: ${delJson.error}`);
+          }
+
+          console.log("\nAll filesystem tools are working correctly!");
+          console.log("The AI should now be able to create files and directories.\n");
+          continue;
+        }
+        if (cmd === "logs") {
+          const logger = getLogger();
+          const logPath = logger.getLogPath();
+          console.log(`\nLog file: ${logPath}\n`);
+
+          if (!fs.existsSync(logPath)) {
+            console.log("(Log file does not exist yet)\n");
+            continue;
+          }
+
+          const lineCount = parseInt(arg, 10) || 20;
+          const content = fs.readFileSync(logPath, "utf8");
+          const lines = content.trim().split("\n");
+          const lastLines = lines.slice(-lineCount);
+
+          console.log(`Last ${Math.min(lineCount, lines.length)} lines:\n`);
+          for (const line of lastLines) {
+            console.log(line);
+          }
+          console.log("");
           continue;
         }
         console.error(`Unknown command: /${cmd}. Try /help.`);

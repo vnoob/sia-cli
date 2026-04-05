@@ -80,6 +80,7 @@ sia [--config <path>] [--provider <name>] [--session <uuid>]
 - **`--new-context`** — Always create a new agent context file in the resolved contexts directory.
 - **`--no-plugins`** — Skip `SIA_HOME/plugins` and `.sia/plugins` (built-in tools still load).
 - **`--cwd`** — Base directory for `@` file paths and plugin discovery.
+- **`--debug`** — Enable debug logging to console (also logs to file).
 
 Environment:
 
@@ -106,6 +107,8 @@ Paths are resolved from `--cwd` (default: process cwd).
 | `/help` | Short help |
 | `/settings` | Interactive menu to select AI provider (OpenAI, Gemini, Claude, or custom); saves to `config.json` |
 | `/plugins` | List available plugins, their load status, and browse tools |
+| `/tools-test` | Verify filesystem tools are working (creates/reads/deletes a test file) |
+| `/logs [n]` | Show log file path and last n lines (default: 20) |
 | `/ingest <path>` | Chunk file, call embeddings API, store vectors locally (needs `config.embedding`) |
 | `/rag on` / `/rag off` | Enable or disable RAG for **this process only** (does not rewrite `config.json`) |
 | `/session` | Print current session id |
@@ -308,3 +311,5 @@ npm test         # vitest
 - 2026-04-04: Fix readline paste issues on Windows by pausing readline around console output; normalize pasted API keys.
 - 2026-04-04: Added `plugin-fs` example with filesystem tools (read, write, list, mkdir, delete, rename, exists, append).
 - 2026-04-04: Added `/plugins` command to list available plugins, their load status, and browse tool descriptions.
+- 2026-04-05: Improved system prompt to encourage AI to use tools proactively; added `/tools-test` command; show tool count at startup.
+- 2026-04-05: Added logging system with daily rotating log files (`SIA_HOME/logs/sia-YYYY-MM-DD.log`); `/logs` command; `--debug` flag.

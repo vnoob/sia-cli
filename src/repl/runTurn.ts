@@ -7,11 +7,22 @@ import { buildRagPrefix } from "../knowledge/rag.js";
 import { chunkText, insertKnowledgeChunk } from "../knowledge/index.js";
 import { fetchEmbedding } from "../llm/embeddings.js";
 import { OpenAICompatibleProvider } from "../llm/openai-compatible.js";
+import { getLogger } from "../logging.js";
 import type { ChatMessage, ToolCall } from "../llm/types.js";
 import type { ToolRegistry } from "../plugins/registry.js";
 
-const DEFAULT_SYSTEM = `You are the sia-cli assistant. You help with local development tasks. 
-Be concise. When tools are available, use them when they clearly help answer the user.`;
+const DEFAULT_SYSTEM = `You are sia-cli, a powerful local development assistant with tool capabilities.
+
+IMPORTANT: You have access to tools that let you interact with the filesystem and perform actions. When the user asks you to create files, directories, projects, or modify content, you MUST use your tools to actually do it — do not just describe what you would do.
+
+Guidelines:
+- When asked to create a project, file, or directory: USE the filesystem tools (sia_fs_mkdir, sia_fs_write, etc.) to create them.
+- When asked to generate code: WRITE the code to files using sia_fs_write, don't just show it.
+- Break complex tasks into steps: create directories first, then write files.
+- Be proactive: if the user wants something created, create it.
+- Be concise in explanations, but thorough in execution.
+
+You are not limited to advice — you can take action. Use your tools.`;
 
 export interface RunTurnOptions {
   db: SiaDatabase;
@@ -27,10 +38,13 @@ export interface RunTurnOptions {
 }
 
 export async function runAssistantTurn(opts: RunTurnOptions): Promise<void> {
+  const log = getLogger();
   const last = opts.history[opts.history.length - 1];
   if (!last || last.role !== "user") {
     throw new Error("history must end with a user message");
   }
+
+  log.info("chat", "User turn", { sessionId: opts.sessionId, contentLength: last.content.length });
 
   const { cfg } = resolveProvider(opts.config, opts.providerName, opts.configPath);
   const apiKey = getApiKey(cfg.apiKeyEnv);
@@ -100,7 +114,12 @@ export async function runAssistantTurn(opts: RunTurnOptions): Promise<void> {
     opts.history.push(assistantMsg);
     messages.push(assistantMsg);
 
-    if (!toolCalls.length) break;
+    if (!toolCalls.length) {
+      log.info("chat", "Assistant response (no tools)", { contentLength: result.content.length });
+      break;
+    }
+
+    log.info("chat", "Assistant requested tools", { count: toolCalls.length, tools: toolCalls.map((t) => t.function.name) });
 
     const ctx = {
       cwd: opts.cwd,
@@ -117,7 +136,11 @@ export async function runAssistantTurn(opts: RunTurnOptions): Promise<void> {
       } catch {
         args = {};
       }
+      log.debug("tool", `Invoking ${tc.function.name}`, { args });
+      const startTime = Date.now();
       const output = await opts.tools.invoke(tc.function.name, args, ctx);
+      const duration = Date.now() - startTime;
+      log.info("tool", `Tool completed: ${tc.function.name}`, { duration, outputLength: output.length });
       appendMessage(opts.db, {
         id: crypto.randomUUID(),
         session_id: opts.sessionId,
